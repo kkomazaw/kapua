@@ -12,6 +12,8 @@
  *******************************************************************************/
 package org.eclipse.kapua.broker.core.message;
 
+import java.io.Serializable;
+
 import org.eclipse.kapua.broker.core.plugin.ConnectorDescriptor;
 import org.eclipse.kapua.message.KapuaMessage;
 import org.eclipse.kapua.model.id.KapuaId;
@@ -23,7 +25,9 @@ import org.eclipse.kapua.model.id.KapuaId;
  * @param <M> Contained message type
  * @since 1.0
  */
-public class CamelKapuaMessage<M extends KapuaMessage<?, ?>> {
+public class CamelKapuaMessage<M extends KapuaMessage<?, ?>> implements Serializable {
+
+    private static final long serialVersionUID = 6299705913639768816L;
 
     private M message;
     private KapuaId connectionId;

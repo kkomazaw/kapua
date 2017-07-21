@@ -12,51 +12,55 @@
  *******************************************************************************/
 package org.eclipse.kapua.broker.core.listener;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
+import org.apache.camel.Exchange;
 import org.apache.camel.spi.UriEndpoint;
 import org.eclipse.kapua.KapuaException;
 import org.eclipse.kapua.broker.core.message.CamelKapuaMessage;
+import org.eclipse.kapua.commons.metric.MetricServiceFactory;
+import org.eclipse.kapua.commons.metric.MetricsService;
 import org.eclipse.kapua.locator.KapuaLocator;
 import org.eclipse.kapua.service.datastore.MessageStoreService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.Counter;
-import com.codahale.metrics.Timer;
-import com.codahale.metrics.Timer.Context;
 
 /**
  * Data storage message listener
  *
  * @since 1.0
  */
-@UriEndpoint(title = "Data storage message processor", syntax = "bean:dataStorageMessageProcessor", scheme = "bean")
+@UriEndpoint(title = "Data storage message processor", syntax = "bean:dataMessageProcessor", scheme = "bean")
 public class DataStorageMessageProcessor extends AbstractProcessor<CamelKapuaMessage<?>> {
 
     private static final Logger logger = LoggerFactory.getLogger(DataStorageMessageProcessor.class);
-
-    // metrics
-    private final Counter metricStorageMessage;
-    // data message
-    private final Counter metricStorageDataErrorMessage;
-    // store timers
-    private final Timer metricStorageDataSaveTime;
-
-    private final static AtomicInteger ERROR_COUNT = new AtomicInteger();
-    private final static AtomicInteger COUNT = new AtomicInteger();
-    private final static AtomicInteger PROCESSED_COUNT = new AtomicInteger();
+    private static final String METRIC_COMPONENT_NAME = "datastore";
 
     private final MessageStoreService messageStoreService = KapuaLocator.getInstance().getService(MessageStoreService.class);
 
+    // queues counters
+    private final Counter metricQueueCommunicationErrorCount;
+    private final Counter metricQueueConfigurationErrorCount;
+    private final Counter metricQueueGenericErrorCount;
+
+    private final Counter metricMessageCount;
+    private final Counter metricCommunicationErrorCount;
+    private final Counter metricConfigurationErrorCount;
+    private final Counter metricGenericErrorCount;
+    private final Counter metricValidationErrorCount;
+
     public DataStorageMessageProcessor() {
         super("DataStorage");
+        MetricsService metricService = MetricServiceFactory.getInstance();
+        metricQueueCommunicationErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "queue", "communication", "error", "count");
+        metricQueueConfigurationErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "queue", "configuration", "error", "count");
+        metricQueueGenericErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "queue", "generic", "error", "count");
 
-        // data message
-        metricStorageMessage = registerCounter("listener", "storage", "messages", "count");
-        metricStorageDataErrorMessage = registerCounter("listener", "storage", "messages", "data", "error", "count");
-        // store timers
-        metricStorageDataSaveTime = registerTimer("listener", "storage", "store", "data", "time", "s");
+        metricMessageCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "messages", "count");
+        metricCommunicationErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "messages", "communication", "error", "count");
+        metricConfigurationErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "messages", "configuration", "error", "count");
+        metricGenericErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "messages", "generic", "error", "count");
+        metricValidationErrorCount = metricService.getCounter(METRIC_COMPONENT_NAME, "datastore", "store", "messages", "validation", "error", "count");
     }
 
     /**
@@ -69,21 +73,33 @@ public class DataStorageMessageProcessor extends AbstractProcessor<CamelKapuaMes
 
         // TODO filter alert topic???
         //
-        PROCESSED_COUNT.incrementAndGet();
         // data messages
-        try {
-            Context metricStorageDataSaveTimeContext = metricStorageDataSaveTime.time();
-            logger.debug("Received data message from device channel: client id '{}' - {}", message.getMessage().getClientId(), message.getMessage().getChannel());
-            messageStoreService.store(message.getMessage());
-            COUNT.incrementAndGet();
-            metricStorageMessage.inc();
-            metricStorageDataSaveTimeContext.stop();
-        } catch (KapuaException e) {
-            ERROR_COUNT.incrementAndGet();
-            metricStorageDataErrorMessage.inc();
-            logger.error("An error occurred while storing message", e);
-            throw e;
-        }
+        logger.debug("Received data message from device channel: client id '{}' - {}", message.getMessage().getClientId(), message.getMessage().getChannel());
+        logger.info("QCE {} - QGE {} - QTE {}  ### CE {} - GE{} - VE {} - TE {}", metricQueueConfigurationErrorCount.getCount(),
+                metricQueueGenericErrorCount.getCount(), metricQueueCommunicationErrorCount.getCount(), metricConfigurationErrorCount.getCount(), metricGenericErrorCount.getCount(),
+                metricValidationErrorCount.getCount(),
+                metricCommunicationErrorCount.getCount());
+
+        messageStoreService.store(message.getMessage());
+    }
+
+    public void processCommunicationErrorMessage(CamelKapuaMessage<?> message) throws KapuaException {
+        logger.info("============CommunicationErrorMessage '" + message.getMessage().getId() + "'");
+        metricQueueCommunicationErrorCount.dec();
+    }
+
+    public void processConfigurationErrorMessage(CamelKapuaMessage<?> message) throws KapuaException {
+        logger.info("============ConfigurationErrorMessage '" + message.getMessage().getId() + "'");
+        metricQueueConfigurationErrorCount.dec();
+    }
+
+    public void processGenericErrorMessage(CamelKapuaMessage<?> message) throws KapuaException {
+        logger.info("============GenericErrorMessage '" + message.getMessage().getId() + "'");
+        metricQueueGenericErrorCount.dec();
+    }
+
+    public void notProcessableMessage(Exchange exchange, Object value) {
+        logger.info("============notProcessableMessage");
     }
 
 }

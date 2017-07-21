@@ -49,7 +49,12 @@ public class KapuaDataConverter extends AbstractKapuaConverter {
     @Converter
     public CamelKapuaMessage<?> convertToData(Exchange exchange, Object value) throws KapuaException {
         metricConverterDataMessage.inc();
-        return convertTo(exchange, value, MessageType.DATA);
+        // this converter may be used in different camel route step so may we already have a CamelKapuaMessage (depending on which step in the Camel route failed)
+        if (value instanceof CamelKapuaMessage<?>) {
+            return (CamelKapuaMessage<?>) value;
+        } else {
+            return convertTo(exchange, value, MessageType.DATA);
+        }
     }
 
 }

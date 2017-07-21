@@ -15,7 +15,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.UUID;
 
 import org.eclipse.kapua.KapuaIllegalArgumentException;
 import org.eclipse.kapua.commons.cache.LocalCache;
@@ -105,13 +104,14 @@ public final class MessageStoreFacade {
      * @throws ConfigurationException
      * @throws ClientException
      */
-    public InsertResponse store(KapuaMessage<?, ?> message)
+    public InsertResponse store(KapuaMessage<?, ?> message, String messageId)
             throws KapuaIllegalArgumentException,
             ConfigurationException,
             ClientException {
         ArgumentValidator.notNull(message, "message");
         ArgumentValidator.notNull(message.getScopeId(), "scopeId");
         ArgumentValidator.notNull(message.getReceivedOn(), "receivedOn");
+        ArgumentValidator.notNull(messageId, "messageId");
 
         // Collect context data
         MessageStoreConfiguration accountServicePlan = configProvider.getConfiguration(message.getScopeId());
@@ -145,12 +145,12 @@ public final class MessageStoreFacade {
         String indexName = schemaMetadata.getDataIndexName();
         TypeDescriptor typeDescriptor = new TypeDescriptor(indexName, MessageSchema.MESSAGE_TYPE_NAME);
         // Save message (the big one)
-        DatastoreMessage messageToStore = convertTo(message);
+        DatastoreMessage messageToStore = convertTo(message, messageId);
         messageToStore.setTimestamp(indexedOnDate);
-        InsertRequest insertRequest = new InsertRequest(typeDescriptor, messageToStore);
+        InsertRequest insertRequest = new InsertRequest(messageToStore.getDatastoreId().toString(), typeDescriptor, messageToStore);
         // Possibly update the schema with new metric mappings
         Map<String, Metric> metrics = new HashMap<>();
-        if (message.getPayload()!=null && message.getPayload().getMetrics()!=null && message.getPayload().getMetrics().size()>0) {
+        if (message.getPayload() != null && message.getPayload().getMetrics() != null && message.getPayload().getMetrics().size() > 0) {
             Map<String, Object> messageMetrics = message.getPayload().getMetrics();
             Iterator<String> metricsIterator = messageMetrics.keySet().iterator();
             while (metricsIterator.hasNext()) {
@@ -501,7 +501,7 @@ public final class MessageStoreFacade {
      * 
      * @param message
      */
-    private DatastoreMessage convertTo(KapuaMessage<?, ?> message) {
+    private DatastoreMessage convertTo(KapuaMessage<?, ?> message, String messageId) {
         DatastoreMessage datastoreMessage = new DatastoreMessageImpl();
         datastoreMessage.setCapturedOn(message.getCapturedOn());
         datastoreMessage.setChannel(message.getChannel());
@@ -515,8 +515,8 @@ public final class MessageStoreFacade {
         datastoreMessage.setSentOn(message.getSentOn());
 
         // generate uuid
-        String id = UUID.randomUUID().toString();
-        datastoreMessage.setDatastoreId(new StorableIdImpl(id));
+        datastoreMessage.setId(message.getId());
+        datastoreMessage.setDatastoreId(new StorableIdImpl(messageId));
         return datastoreMessage;
     }
 
